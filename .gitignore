@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.turbo/
 
 # Environment
 .env
@@ -13,6 +14,8 @@ out/
 # Build
 dist/
 build/
+*.tsbuildinfo
+coverage/
 
 # OS
 .DS_Store

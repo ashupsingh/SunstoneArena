@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "ecb2180a-2751-4403-a496-25c442c335d9"
+      }
+    },
+    "android": {
+      "package": "com.ashupsingh.arenamonorepo"
+    }
+  }
+}

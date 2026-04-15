@@ -7,10 +7,13 @@ import { apiClient } from '../../config/api';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function LoginScreen() {
-  const { role } = useLocalSearchParams<{ role: string }>();
+  const { role } = useLocalSearchParams<{ role?: string | string[] }>();
   const router = useRouter();
   const { signIn } = useAuth();
   const { colors } = useTheme();
+
+  const normalizedRole = Array.isArray(role) ? role[0] : role;
+  const selectedRole = normalizedRole === 'teacher' || normalizedRole === 'student' ? normalizedRole : undefined;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,7 +21,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{email?: string, password?: string}>({});
 
-  const displayRole = role === 'teacher' ? 'Teacher' : 'Student';
+  const displayRole = selectedRole === 'teacher' ? 'Teacher' : 'Student';
 
   const handleLogin = async () => {
     const newErrors: {email?: string, password?: string} = {};
@@ -33,24 +36,53 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post('/auth/login', { email, password });
-      
-      if (response.data.role !== role) {
-        Alert.alert('Error', `This account is registered as a ${response.data.role}. Please select the correct login option.`);
-        setLoading(false);
-        return;
-      }
+      const normalizedEmail = email.trim().toLowerCase();
+      try {
+        const response = await apiClient.post('/auth/login/request-otp', { email: normalizedEmail, password });
 
-      await signIn(response.data.token, {
-        _id: response.data._id,
-        name: response.data.name,
-        email: response.data.email,
-        role: response.data.role,
-        isApproved: response.data.isApproved,
-        profilePicture: response.data.profilePicture,
-        enrollmentNumber: response.data.enrollmentNumber,
-      });
-      // AuthContext will automatically route them appropriately (tabs or pending)
+        if (response.data?.devOtp) {
+          Alert.alert('OTP Generated', `Development OTP: ${response.data.devOtp}`);
+        } else {
+          Alert.alert('OTP Sent', 'A verification code was sent to your email.');
+        }
+
+        router.push({
+          pathname: '/(auth)/verify',
+          params: {
+            email: normalizedEmail,
+            mode: 'login',
+            role: selectedRole || '',
+          },
+        });
+      } catch (otpError: any) {
+        const status = otpError?.response?.status;
+        const rawMessage = typeof otpError?.response?.data === 'string' ? otpError.response.data : '';
+        const routeMissing = status === 404 || rawMessage.includes('Cannot POST /api/auth/login/request-otp');
+
+        if (!routeMissing) {
+          throw otpError;
+        }
+
+        const fallbackResponse = await apiClient.post('/auth/login', { email: normalizedEmail, password });
+
+        if (selectedRole && fallbackResponse.data.role !== selectedRole) {
+          Alert.alert('Error', `This account is registered as a ${fallbackResponse.data.role}. Please select the correct login option.`);
+          setLoading(false);
+          return;
+        }
+
+        Alert.alert('Temporary Login Mode', 'OTP login is not available on the connected server yet, so the app used standard login for now.');
+
+        await signIn(fallbackResponse.data.token, {
+          _id: fallbackResponse.data._id,
+          name: fallbackResponse.data.name,
+          email: fallbackResponse.data.email,
+          role: fallbackResponse.data.role,
+          isApproved: fallbackResponse.data.isApproved,
+          profilePicture: fallbackResponse.data.profilePicture,
+          enrollmentNumber: fallbackResponse.data.enrollmentNumber,
+        });
+      }
 
     } catch (error: any) {
       console.log('Mobile Login Error:', error, error.response?.data);
@@ -66,7 +98,7 @@ export default function LoginScreen() {
       <View style={styles.formContainer}>
         <View style={styles.header}>
           <View style={[styles.roleChip, { backgroundColor: colors.primaryBg }]}> 
-            <Ionicons name={role === 'teacher' ? 'laptop-outline' : 'school-outline'} size={16} color={colors.primary} />
+            <Ionicons name={selectedRole === 'teacher' ? 'laptop-outline' : 'school-outline'} size={16} color={colors.primary} />
             <Text style={[styles.roleChipText, { color: colors.primary }]}>{displayRole} Access</Text>
           </View>
           <Text style={[styles.title, { color: colors.text }]}>Welcome Back</Text>
@@ -118,7 +150,7 @@ export default function LoginScreen() {
 
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: colors.textSecondary }]}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => router.push({ pathname: '/(auth)/signup', params: { role } })}>
+          <TouchableOpacity onPress={() => router.push({ pathname: '/(auth)/signup', params: { role: selectedRole || 'student' } })}>
             <Text style={[styles.footerLink, { color: colors.primary }]}>Sign Up</Text>
           </TouchableOpacity>
         </View>

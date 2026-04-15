@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { sendOtp, verifyOtpAndRegister, loginUser, getUserProfile, updateProfile, forgotPassword, resetPassword, loginSchema, sendOtpSchema, forgotPasswordSchema, resetPasswordSchema, updateProfileSchema, uploadProfilePhoto } from '../controllers/authController';
+import { sendOtp, verifyOtpAndRegister, loginUser, requestLoginOtp, verifyLoginOtp, getUserProfile, updateProfile, forgotPassword, resetPassword, loginSchema, requestLoginOtpSchema, verifyLoginOtpSchema, sendOtpSchema, forgotPasswordSchema, resetPasswordSchema, updateProfileSchema, uploadProfilePhoto } from '../controllers/authController';
 import { protect } from '../middleware/authMiddleware';
 import validate from '../middleware/validate';
 
@@ -17,6 +17,8 @@ const upload = multer({
 router.post('/send-otp', validate(sendOtpSchema), sendOtp);
 router.post('/signup', verifyOtpAndRegister);
 router.post('/login', validate(loginSchema), loginUser);
+router.post('/login/request-otp', validate(requestLoginOtpSchema), requestLoginOtp);
+router.post('/login/verify-otp', validate(verifyLoginOtpSchema), verifyLoginOtp);
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword);
 router.route('/profile').get(protect, getUserProfile).put(protect, validate(updateProfileSchema), updateProfile);

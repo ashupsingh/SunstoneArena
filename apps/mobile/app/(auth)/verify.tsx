@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,10 +7,11 @@ import { apiClient } from '../../config/api';
 import { useTheme } from '../../context/ThemeContext';
 
 export default function VerifyScreen() {
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { email, mode, role } = useLocalSearchParams<{ email: string; mode?: string; role?: string }>();
   const router = useRouter();
   const { signIn } = useAuth();
   const { colors } = useTheme();
+  const isLoginMode = mode === 'login';
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -18,10 +19,9 @@ export default function VerifyScreen() {
 
   const handleOtpChange = (text: string, index: number) => {
     const newOtp = [...otp];
-    newOtp[index] = text;
+    newOtp[index] = text.replace(/\D/g, '').slice(0, 1);
     setOtp(newOtp);
 
-    // Auto-advance to next input
     if (text && index < 5) {
       inputs.current[index + 1]?.focus();
     }
@@ -45,8 +45,16 @@ export default function VerifyScreen() {
 
     setLoading(true);
     try {
-      const response = await apiClient.post('/auth/signup', { email, otp: otpString });
-      
+      const response = isLoginMode
+        ? await apiClient.post('/auth/login/verify-otp', { email, otp: otpString })
+        : await apiClient.post('/auth/signup', { email, otp: otpString });
+
+      if (isLoginMode && role && response.data.role !== role) {
+        Alert.alert('Error', `This account is registered as a ${response.data.role}. Please select the correct login option.`);
+        setLoading(false);
+        return;
+      }
+
       await signIn(response.data.token, {
         _id: response.data._id,
         name: response.data.name,
@@ -56,11 +64,8 @@ export default function VerifyScreen() {
         profilePicture: response.data.profilePicture,
         enrollmentNumber: response.data.enrollmentNumber,
       });
-      // AuthContext will automatically route them appropriately (tabs or pending)
-
     } catch (error: any) {
-      console.log('OTP Verify Error:', JSON.stringify(error.response?.data));
-      Alert.alert('Verification Failed', error.response?.data?.message || 'Invalid OTP');
+      Alert.alert(isLoginMode ? 'Login Verification Failed' : 'Verification Failed', error.response?.data?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
     }
@@ -69,17 +74,18 @@ export default function VerifyScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.formContainer}>
-
         <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: colors.surface }]}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
 
         <View style={styles.header}>
           <View style={[styles.iconCircle, { backgroundColor: 'rgba(79, 70, 229, 0.1)' }]}>
-            <Ionicons name="mail-open-outline" size={40} color={colors.primary} />
+            <Ionicons name={isLoginMode ? 'shield-checkmark-outline' : 'mail-open-outline'} size={40} color={colors.primary} />
           </View>
-          <Text style={[styles.title, { color: colors.text }]}>Check your email</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>We sent a 6-digit code to</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{isLoginMode ? 'Verify it is you' : 'Check your email'}</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {isLoginMode ? 'Enter the 6-digit login code sent to' : 'We sent a 6-digit code to'}
+          </Text>
           <Text style={[styles.emailText, { color: colors.primary }]}>{email}</Text>
         </View>
 
@@ -88,11 +94,7 @@ export default function VerifyScreen() {
             <TextInput
               key={index}
               ref={(ref) => { inputs.current[index] = ref; }}
-              style={[styles.otpInput, { 
-                backgroundColor: colors.surface, 
-                borderColor: digit ? colors.primary : colors.border, 
-                color: colors.text 
-              }]}
+              style={[styles.otpInput, { backgroundColor: colors.surface, borderColor: digit ? colors.primary : colors.border, color: colors.text }]}
               keyboardType="number-pad"
               maxLength={1}
               value={digit}
@@ -106,14 +108,16 @@ export default function VerifyScreen() {
         <TouchableOpacity style={[styles.verifyButton, { backgroundColor: colors.primary }]} onPress={handleVerify} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : (
             <View style={styles.buttonContent}>
-              <Text style={styles.verifyButtonText}>Verify Account</Text>
+              <Text style={styles.verifyButtonText}>{isLoginMode ? 'Verify & Continue' : 'Verify Account'}</Text>
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
             </View>
           )}
         </TouchableOpacity>
 
         <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: colors.textSecondary }]}>Entered the wrong email? </Text>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+            {isLoginMode ? 'Need to change login details? ' : 'Entered the wrong email? '}
+          </Text>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={[styles.footerLink, { color: colors.primary }]}>Go Back</Text>
           </TouchableOpacity>

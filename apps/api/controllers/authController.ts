@@ -22,6 +22,16 @@ export const loginSchema = z.object({
     password: z.string().min(1, 'Password is required'),
 });
 
+export const requestLoginOtpSchema = z.object({
+    email: z.string().email('Invalid email address'),
+    password: z.string().min(1, 'Password is required'),
+});
+
+export const verifyLoginOtpSchema = z.object({
+    email: z.string().email('Invalid email address'),
+    otp: z.string().length(6, 'OTP must be 6 digits'),
+});
+
 export const sendOtpSchema = z.object({
     email: z.string().email('Invalid email address'),
     password: z.string().min(8, 'Password must be at least 8 characters'),
@@ -216,6 +226,99 @@ export const loginUser = async (req: AuthRequest, res: Response, next: NextFunct
     }
 };
 
+export const requestLoginOtp = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const email = normalizeEmail(req.body.email);
+        const { password } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user || !(await user.matchPassword(password))) {
+            res.status(401).json({ message: 'Invalid email or password' });
+            return;
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        await Otp.deleteMany({ email });
+        await Otp.create({
+            email,
+            otp,
+            userData: {
+                loginOtp: true,
+                userId: String(user._id),
+            },
+        });
+
+        const emailResult = await sendOtpEmail(email, otp);
+
+        if (!emailResult.delivered) {
+            if (process.env.NODE_ENV !== 'production') {
+                res.json({
+                    message: 'Login OTP generated. Email delivery is not configured in this environment.',
+                    devOtp: otp,
+                });
+                return;
+            }
+
+            res.status(503).json({ message: 'Unable to send login OTP right now. Please try again later.' });
+            return;
+        }
+
+        res.json({ message: 'A login OTP has been sent to your email address.' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifyLoginOtp = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const email = normalizeEmail(req.body.email);
+        const { otp } = req.body;
+        const otpRecord = await Otp.findOne({ email });
+
+        if (!otpRecord || !otpRecord.userData?.loginOtp) {
+            res.status(400).json({ message: 'OTP expired or not found. Please request a new login code.' });
+            return;
+        }
+
+        if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
+            await Otp.deleteMany({ email });
+            res.status(429).json({ message: 'Too many OTP attempts. Please request a new login code.' });
+            return;
+        }
+
+        const isMatch = await otpRecord.matchOtp(otp);
+        if (!isMatch) {
+            otpRecord.attempts += 1;
+            await otpRecord.save();
+            res.status(400).json({ message: `Invalid OTP. ${MAX_OTP_ATTEMPTS - otpRecord.attempts} attempts remaining.` });
+            return;
+        }
+
+        const user = await User.findById(otpRecord.userData.userId);
+        if (!user) {
+            await Otp.deleteMany({ email });
+            res.status(404).json({ message: 'User not found.' });
+            return;
+        }
+
+        await Otp.deleteMany({ email });
+
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            department: user.department,
+            isApproved: user.isApproved,
+            profilePicture: user.profilePicture,
+            enrollmentNumber: user.enrollmentNumber,
+            token: generateToken(String(user._id)),
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getUserProfile = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
         const user = await User.findById(req.user!._id).populate('department', 'name code');
@@ -395,4 +498,3 @@ export const uploadProfilePhoto = async (req: AuthRequest & { file?: Express.Mul
         next(error);
     }
 };
-

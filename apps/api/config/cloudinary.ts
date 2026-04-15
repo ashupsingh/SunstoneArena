@@ -1,9 +1,9 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 const getCloudinaryEnv = () => ({
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-    apiKey: process.env.CLOUDINARY_API_KEY,
-    apiSecret: process.env.CLOUDINARY_API_SECRET,
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME?.trim(),
+    apiKey: process.env.CLOUDINARY_API_KEY?.trim(),
+    apiSecret: process.env.CLOUDINARY_API_SECRET?.trim(),
 });
 
 export const isCloudinaryConfigured = (): boolean => {

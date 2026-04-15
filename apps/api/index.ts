@@ -37,11 +37,16 @@ if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !pr
     console.warn('⚠️ Cloudinary env vars missing. Profile photo uploads are disabled.');
 }
 
-void connectDB().catch((error) => {
-    console.error('Database connection failed during startup:', error?.message || error);
-});
-
 const app = express();
+
+const ensureDatabaseConnection = async (_req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    try {
+        await connectDB();
+        next();
+    } catch (error) {
+        next(error);
+    }
+};
 
 const sanitizeValue = (value: unknown): unknown => {
     if (Array.isArray(value)) {
@@ -117,17 +122,17 @@ const authLimiter = rateLimit({
 app.use(generalLimiter);
 
 // Routes — auth routes get the stricter limiter
-app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/crowd', crowdRoutes);
-app.use('/api/schedules', scheduleRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/teacher', teacherRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/bus', busRoutes);
-app.use('/api/departments', departmentRoutes);
-app.use('/api/events', eventRoutes);
-app.use('/api/campus', campusRoutes);
-app.use('/api/realtime', realtimeRoutes);
+app.use('/api/auth', ensureDatabaseConnection, authLimiter, authRoutes);
+app.use('/api/crowd', ensureDatabaseConnection, crowdRoutes);
+app.use('/api/schedules', ensureDatabaseConnection, scheduleRoutes);
+app.use('/api/notifications', ensureDatabaseConnection, notificationRoutes);
+app.use('/api/teacher', ensureDatabaseConnection, teacherRoutes);
+app.use('/api/admin', ensureDatabaseConnection, adminRoutes);
+app.use('/api/bus', ensureDatabaseConnection, busRoutes);
+app.use('/api/departments', ensureDatabaseConnection, departmentRoutes);
+app.use('/api/events', ensureDatabaseConnection, eventRoutes);
+app.use('/api/campus', ensureDatabaseConnection, campusRoutes);
+app.use('/api/realtime', ensureDatabaseConnection, realtimeRoutes);
 
 app.get('/', (_req, res) => {
     res.json({ message: 'SyntaxError API — Smart Campus Management System (ADTU)' });

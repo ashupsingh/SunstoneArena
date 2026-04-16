@@ -31,3 +31,6 @@ npm-debug.log*
 
 # Local notes
 workflow.md
+
+.vercel
+.env*.local

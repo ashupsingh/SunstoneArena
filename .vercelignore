@@ -1,0 +1,11 @@
+# Exclude non-API workspaces from backend deployments
+apps/mobile
+apps/web
+presentation
+
+# Local/temporary artifacts
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example

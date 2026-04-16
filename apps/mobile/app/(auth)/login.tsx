@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../config/api';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import ThemedNoticeModal from '../../components/ThemedNoticeModal';
 
 export default function LoginScreen() {
   const { role } = useLocalSearchParams<{ role?: string | string[] }>();
@@ -20,6 +21,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{email?: string, password?: string}>({});
+  const [notice, setNotice] = useState<{ title: string; message: string; tone: 'info' | 'error' | 'success' } | null>(null);
 
   const displayRole = selectedRole === 'teacher' ? 'Teacher' : 'Student';
 
@@ -37,57 +39,68 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      try {
-        const response = await apiClient.post('/auth/login/request-otp', { email: normalizedEmail, password });
+      const tryLegacyLogin = async () => {
+        const legacyResponse = await apiClient.post('/auth/login', { email: normalizedEmail, password });
 
-        if (response.data?.devOtp) {
-          Alert.alert('OTP Generated', `Development OTP: ${response.data.devOtp}`);
-        } else {
-          Alert.alert('OTP Sent', 'A verification code was sent to your email.');
+        if (selectedRole && legacyResponse.data.role !== selectedRole) {
+          setNotice({
+            title: 'Role Mismatch',
+            message: `This account is registered as a ${legacyResponse.data.role}. Please select the correct login option.`,
+            tone: 'error',
+          });
+          return;
         }
 
-        router.push({
-          pathname: '/(auth)/verify',
-          params: {
-            email: normalizedEmail,
-            mode: 'login',
-            role: selectedRole || '',
-          },
+        await signIn(legacyResponse.data.token, {
+          _id: legacyResponse.data._id,
+          name: legacyResponse.data.name,
+          email: legacyResponse.data.email,
+          role: legacyResponse.data.role,
+          isApproved: legacyResponse.data.isApproved,
+          profilePicture: legacyResponse.data.profilePicture,
+          enrollmentNumber: legacyResponse.data.enrollmentNumber,
         });
+      };
+
+      let response;
+      try {
+        response = await apiClient.post('/auth/login/request-otp', { email: normalizedEmail, password });
       } catch (otpError: any) {
         const status = otpError?.response?.status;
         const rawMessage = typeof otpError?.response?.data === 'string' ? otpError.response.data : '';
         const routeMissing = status === 404 || rawMessage.includes('Cannot POST /api/auth/login/request-otp');
 
-        if (!routeMissing) {
-          throw otpError;
-        }
-
-        const fallbackResponse = await apiClient.post('/auth/login', { email: normalizedEmail, password });
-
-        if (selectedRole && fallbackResponse.data.role !== selectedRole) {
-          Alert.alert('Error', `This account is registered as a ${fallbackResponse.data.role}. Please select the correct login option.`);
-          setLoading(false);
+        if (routeMissing) {
+          await tryLegacyLogin();
           return;
         }
 
-        Alert.alert('Temporary Login Mode', 'OTP login is not available on the connected server yet, so the app used standard login for now.');
-
-        await signIn(fallbackResponse.data.token, {
-          _id: fallbackResponse.data._id,
-          name: fallbackResponse.data.name,
-          email: fallbackResponse.data.email,
-          role: fallbackResponse.data.role,
-          isApproved: fallbackResponse.data.isApproved,
-          profilePicture: fallbackResponse.data.profilePicture,
-          enrollmentNumber: fallbackResponse.data.enrollmentNumber,
-        });
+        throw otpError;
       }
 
+      const routeParams: Record<string, string> = {
+        email: normalizedEmail,
+        mode: 'login',
+      };
+      if (selectedRole) routeParams.role = selectedRole;
+      if (response.data?.devOtp) routeParams.devOtp = String(response.data.devOtp);
+
+      router.push({
+        pathname: '/(auth)/verify',
+        params: routeParams,
+      });
+
+      setNotice({
+        title: response.data?.devOtp ? 'OTP Generated' : 'OTP Sent',
+        message: response.data?.devOtp
+          ? `Development OTP: ${response.data.devOtp}`
+          : 'A verification code was sent to your email.',
+        tone: 'success',
+      });
     } catch (error: any) {
       console.log('Mobile Login Error:', error, error.response?.data);
       const msg = error.response?.data?.message || `Detailed Error: ${error.message || 'Unknown'}`;
-      Alert.alert('Login Failed', msg);
+      setNotice({ title: 'Login Failed', message: msg, tone: 'error' });
     } finally {
       setLoading(false);
     }
@@ -159,6 +172,13 @@ export default function LoginScreen() {
           <Text style={[styles.backButtonText, { color: colors.textSecondary }]}>Change Role</Text>
         </TouchableOpacity>
       </View>
+      <ThemedNoticeModal
+        visible={!!notice}
+        title={notice?.title || ''}
+        message={notice?.message || ''}
+        tone={notice?.tone || 'info'}
+        onClose={() => setNotice(null)}
+      />
     </KeyboardAvoidingView>
   );
 }

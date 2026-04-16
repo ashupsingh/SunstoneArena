@@ -1,13 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../config/api';
 import { useTheme } from '../../context/ThemeContext';
+import ThemedNoticeModal from '../../components/ThemedNoticeModal';
 
 export default function VerifyScreen() {
-  const { email, mode, role } = useLocalSearchParams<{ email: string; mode?: string; role?: string }>();
+  const { email, mode, role, devOtp } = useLocalSearchParams<{ email: string; mode?: string; role?: string; devOtp?: string }>();
   const router = useRouter();
   const { signIn } = useAuth();
   const { colors } = useTheme();
@@ -15,6 +16,7 @@ export default function VerifyScreen() {
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState<{ title: string; message: string; tone: 'info' | 'error' | 'success' } | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
 
   const handleOtpChange = (text: string, index: number) => {
@@ -39,7 +41,7 @@ export default function VerifyScreen() {
   const handleVerify = async () => {
     const otpString = otp.join('');
     if (otpString.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
+      setNotice({ title: 'Invalid OTP', message: 'Please enter a valid 6-digit OTP.', tone: 'error' });
       return;
     }
 
@@ -50,7 +52,11 @@ export default function VerifyScreen() {
         : await apiClient.post('/auth/signup', { email, otp: otpString });
 
       if (isLoginMode && role && response.data.role !== role) {
-        Alert.alert('Error', `This account is registered as a ${response.data.role}. Please select the correct login option.`);
+        setNotice({
+          title: 'Role Mismatch',
+          message: `This account is registered as a ${response.data.role}. Please select the correct login option.`,
+          tone: 'error',
+        });
         setLoading(false);
         return;
       }
@@ -65,7 +71,11 @@ export default function VerifyScreen() {
         enrollmentNumber: response.data.enrollmentNumber,
       });
     } catch (error: any) {
-      Alert.alert(isLoginMode ? 'Login Verification Failed' : 'Verification Failed', error.response?.data?.message || 'Invalid OTP');
+      setNotice({
+        title: isLoginMode ? 'Login Verification Failed' : 'Verification Failed',
+        message: error.response?.data?.message || 'Invalid OTP',
+        tone: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -87,6 +97,7 @@ export default function VerifyScreen() {
             {isLoginMode ? 'Enter the 6-digit login code sent to' : 'We sent a 6-digit code to'}
           </Text>
           <Text style={[styles.emailText, { color: colors.primary }]}>{email}</Text>
+          {devOtp ? <Text style={[styles.devOtpText, { color: colors.primary }]}>Dev OTP: {devOtp}</Text> : null}
         </View>
 
         <View style={styles.otpContainer}>
@@ -123,6 +134,13 @@ export default function VerifyScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      <ThemedNoticeModal
+        visible={!!notice}
+        title={notice?.title || ''}
+        message={notice?.message || ''}
+        tone={notice?.tone || 'info'}
+        onClose={() => setNotice(null)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -136,6 +154,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
   subtitle: { fontSize: 15, textAlign: 'center' },
   emailText: { fontSize: 15, fontWeight: '600', marginTop: 4 },
+  devOtpText: { fontSize: 14, fontWeight: '700', marginTop: 10 },
   otpContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, gap: 8 },
   otpInput: {
     flex: 1,

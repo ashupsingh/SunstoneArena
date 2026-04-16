@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, FlatList, TouchableOpacity, TextInput, Alert, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, FlatList, TouchableOpacity, TextInput, Alert, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient } from '../../config/api';
@@ -407,7 +407,11 @@ export default function ScheduleScreen() {
       ) : null}
 
       <Modal visible={showFormModal} transparent animationType="slide" onRequestClose={() => setShowFormModal(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+        >
           <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
             <View style={styles.modalHead}>
               <Text style={[styles.formTitle, { color: colors.text }]}>{editingId ? 'Edit Class' : 'Schedule Class'}</Text>
@@ -416,7 +420,11 @@ export default function ScheduleScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalScrollContent}
+            >
               <TextInput
                 value={form.subject}
                 onChangeText={(subject) => setForm({ ...form, subject })}
@@ -483,7 +491,7 @@ export default function ScheduleScreen() {
               </View>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showAttendanceModal} transparent animationType="slide" onRequestClose={closeAttendanceModal}>
@@ -667,6 +675,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  modalScrollContent: {
+    paddingBottom: 12,
   },
   attendanceSubject: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
   attendanceHint: { fontSize: 12, marginBottom: 10 },

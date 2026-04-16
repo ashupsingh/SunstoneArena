@@ -41,7 +41,7 @@ export default function LoginPage() {
         try {
             await requestOtp();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Invalid email or password');
+            setError(err.response?.data?.message || (err.request ? 'Network error — unable to reach the server. Please try again.' : 'Invalid email or password'));
         } finally {
             setLoading(false);
         }
@@ -56,7 +56,7 @@ export default function LoginPage() {
             const { data } = await api.post('/auth/login/verify-otp', { email, otp });
             login(data.token, data);
         } catch (err: any) {
-            setError(err.response?.data?.message || 'OTP verification failed');
+            setError(err.response?.data?.message || (err.request ? 'Network error — unable to reach the server.' : 'OTP verification failed'));
         } finally {
             setLoading(false);
         }
@@ -69,7 +69,7 @@ export default function LoginPage() {
         try {
             await requestOtp();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Unable to resend OTP right now');
+            setError(err.response?.data?.message || (err.request ? 'Network error — unable to reach the server.' : 'Unable to resend OTP right now'));
         } finally {
             setLoading(false);
         }

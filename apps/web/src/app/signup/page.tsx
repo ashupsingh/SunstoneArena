@@ -56,7 +56,7 @@ export default function SignupPage() {
             await api.post('/auth/send-otp', { ...formData, role });
             setStep('otp');
         } catch (err: any) {
-            const msg = err.response?.data?.message || err.message || 'Failed to send OTP';
+            const msg = err.response?.data?.message || (err.request ? 'Network error — unable to reach the server. Please try again.' : (err.message || 'Failed to send OTP'));
             setError(typeof msg === 'string' ? msg : 'An unexpected error occurred');
         } finally { setLoading(false); }
     };
@@ -69,7 +69,7 @@ export default function SignupPage() {
             const { data } = await api.post('/auth/signup', { email: formData.email, otp });
             login(data.token, data);
         } catch (err: any) {
-            const msg = err.response?.data?.message || err.message || 'OTP verification failed';
+            const msg = err.response?.data?.message || (err.request ? 'Network error — unable to reach the server.' : (err.message || 'OTP verification failed'));
             setError(typeof msg === 'string' ? msg : 'An unexpected error occurred');
         } finally { setLoading(false); }
     };

@@ -17,9 +17,19 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const { login } = useAuth();
 
+    const completeLoginIfReady = (data: any) => {
+        if (data?.token) {
+            login(data.token, data);
+            return true;
+        }
+        return false;
+    };
+
     const requestOtp = async () => {
         const { data } = await api.post('/auth/login/request-otp', { email, password });
-        setStep('otp');
+        if (!completeLoginIfReady(data)) {
+            setStep('otp');
+        }
         return data;
     };
 

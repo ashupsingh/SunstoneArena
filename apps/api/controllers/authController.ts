@@ -11,10 +11,46 @@ import { AuthRequest } from '../middleware/authMiddleware';
 const MAX_OTP_ATTEMPTS = 5;
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const findUserByEmail = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    return await User.findOne({
+        email: { $regex: `^${escapeRegex(normalizedEmail)}$`, $options: 'i' },
+    });
+};
+
+const validateUserPassword = async (user: any, password: string): Promise<boolean> => {
+    if (!user) return false;
+
+    if (await user.matchPassword(password)) {
+        return true;
+    }
+
+    if (typeof user.password === 'string' && user.password === password) {
+        user.password = password;
+        await user.save();
+        return true;
+    }
+
+    return false;
+};
 
 const generateToken = (id: string): string => {
     return jwt.sign({ id }, process.env.JWT_SECRET as string, { expiresIn: '1d' });
 };
+
+const buildAuthResponse = (user: any) => ({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    department: user.department,
+    isApproved: user.isApproved,
+    profilePicture: user.profilePicture,
+    enrollmentNumber: user.enrollmentNumber,
+    token: generateToken(String(user._id)),
+});
 
 // Zod schemas
 export const loginSchema = z.object({
@@ -204,20 +240,14 @@ export const loginUser = async (req: AuthRequest, res: Response, next: NextFunct
     try {
         const email = normalizeEmail(req.body.email);
         const { password } = req.body;
-        const user = await User.findOne({ email });
+        const user = await findUserByEmail(email);
 
-        if (user && (await user.matchPassword(password))) {
-            res.json({
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                department: user.department,
-                isApproved: user.isApproved,
-                profilePicture: user.profilePicture,
-                enrollmentNumber: user.enrollmentNumber,
-                token: generateToken(String(user._id)),
-            });
+        if (user && (await validateUserPassword(user, password))) {
+            if (user.role === 'teacher' && user.isApproved === false) {
+                res.status(403).json({ message: 'Teacher account is pending admin approval.' });
+                return;
+            }
+            res.json(buildAuthResponse(user));
         } else {
             res.status(401).json({ message: 'Invalid email or password' });
         }
@@ -230,10 +260,15 @@ export const requestLoginOtp = async (req: AuthRequest, res: Response, next: Nex
     try {
         const email = normalizeEmail(req.body.email);
         const { password } = req.body;
-        const user = await User.findOne({ email });
+        const user = await findUserByEmail(email);
 
-        if (!user || !(await user.matchPassword(password))) {
+        if (!user || !(await validateUserPassword(user, password))) {
             res.status(401).json({ message: 'Invalid email or password' });
+            return;
+        }
+
+        if (user.role === 'teacher' && user.isApproved === false) {
+            res.status(403).json({ message: 'Teacher account is pending admin approval.' });
             return;
         }
 
@@ -259,7 +294,13 @@ export const requestLoginOtp = async (req: AuthRequest, res: Response, next: Nex
                 return;
             }
 
-            res.status(503).json({ message: 'Unable to send login OTP right now. Please try again later.' });
+            // Gracefully fallback to password login if OTP transport is down in production.
+            await Otp.deleteMany({ email });
+            res.json({
+                ...buildAuthResponse(user),
+                message: 'OTP delivery is currently unavailable. Signed in with password verification.',
+                loginFallback: true,
+            });
             return;
         }
 
@@ -301,19 +342,15 @@ export const verifyLoginOtp = async (req: AuthRequest, res: Response, next: Next
             return;
         }
 
+        if (user.role === 'teacher' && user.isApproved === false) {
+            await Otp.deleteMany({ email });
+            res.status(403).json({ message: 'Teacher account is pending admin approval.' });
+            return;
+        }
+
         await Otp.deleteMany({ email });
 
-        res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            department: user.department,
-            isApproved: user.isApproved,
-            profilePicture: user.profilePicture,
-            enrollmentNumber: user.enrollmentNumber,
-            token: generateToken(String(user._id)),
-        });
+        res.json(buildAuthResponse(user));
     } catch (error) {
         next(error);
     }
